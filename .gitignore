@@ -23,6 +23,8 @@ data/splits/
 models/pretrained/*.pt
 models/runs/
 
+.bat
+
 # OS
 .DS_Store
 Thumbs.db
