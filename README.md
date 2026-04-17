@@ -1,106 +1,143 @@
-# Traffic Sign Detection & Recognition — YOLOv11 + QLabs
+# Traffic Sign Detection & Recognition — YOLOv11 + QLabs QCar2
 
-A complete pipeline for traffic sign detection and recognition using YOLOv11,
-integrated with the Quanser QLabs simulation environment (QCar platform).
+基于 YOLOv11 的交通标志检测与识别系统，集成 Quanser QLabs QCar2 仿真平台，实现自动驾驶数据采集、模型训练和实时推理。
 
-## Project Structure
+## 项目结构
 
 ```
 traffic_sign_yolo/
-├── configs/                  # YAML config files
-│   ├── dataset.yaml          # Dataset paths and class definitions
-│   └── train.yaml            # Training hyperparameters
+├── configs/
+│   ├── dataset.yaml        # 数据集路径与类别定义
+│   └── train.yaml          # 训练超参数
 ├── data/
-│   ├── raw/                  # Raw collected images / QLabs screenshots
-│   ├── annotated/            # LabelImg / Label Studio export (YOLO format)
-│   └── splits/               # train / val / test after split
-│       ├── train/images|labels
-│       ├── val/images|labels
-│       └── test/images|labels
+│   ├── raw/                # QLabs 采集的原始图像
+│   ├── annotated/          # LabelImg 标注后的数据（YOLO格式）
+│   └── splits/             # train / val / test 分割结果
 ├── models/
-│   ├── pretrained/           # Downloaded YOLOv11 weights (.pt)
-│   └── runs/                 # Training experiment outputs
+│   ├── pretrained/         # YOLOv11 预训练权重
+│   └── runs/               # 训练输出（权重、日志、可视化）
 ├── src/
 │   ├── data/
-│   │   ├── collect_qlab.py   # Capture frames from QLabs QCar camera
-│   │   ├── split_dataset.py  # Train/val/test split utility
-│   │   └── augment.py        # Optional offline augmentation
+│   │   └── split_dataset.py        # 数据集分割工具
+│   ├── qlab/
+│   │   ├── setup_scene.py          # QLabs 场景初始化 + 交通标志布置
+│   │   ├── collect_keyboard.py     # 键盘手动控制采集
+│   │   └── collect_auto.py         # 自动驾驶采集（QCarDriveController）
 │   ├── train/
-│   │   └── train.py          # Fine-tune YOLOv11
-│   ├── inference/
-│   │   ├── detect_image.py   # Single image / batch inference
-│   │   └── detect_video.py   # Webcam / video stream inference
-│   └── qlab/
-│       └── qcar_inference.py # Real-time inference loop on QCar
-├── notebooks/
-│   └── explore.ipynb         # EDA, visualise annotations, evaluation
+│   │   └── train.py                # YOLOv11 微调训练
+│   └── inference/
+│       └── detect_image.py         # 图像/视频推理
 ├── scripts/
-│   ├── setup_env.bat         # Windows one-click env setup
-│   └── download_weights.py   # Auto-download YOLOv11n/s weights
+│   ├── setup_env.bat               # Windows 一键环境配置
+│   └── download_weights.py         # 下载 YOLOv11 预训练权重
 ├── docs/
-│   └── class_list.md         # Traffic sign class definitions
+│   └── class_list.md               # 交通标志类别定义
 └── requirements.txt
 ```
 
-## Quick Start
+## 环境要求
 
-### 1. Setup environment (Windows)
-
-```bat
-scripts\setup_env.bat
-```
-
-Or manually:
-
-```bat
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 2. Download pretrained weights
-
-```bat
-python scripts\download_weights.py
-```
-
-### 3. Collect data from QLabs
-
-```bat
-python src\data\collect_qlab.py --output data\raw --num_frames 500
-```
-
-### 4. Annotate
-
-Use [LabelImg](https://github.com/HumanSignal/labelImg) in YOLO format.
-Export labels to `data/annotated/`.
-
-### 5. Split dataset
-
-```bat
-python src\data\split_dataset.py --src data\annotated --dst data\splits
-```
-
-### 6. Train
-
-```bat
-python src\train\train.py --config configs\train.yaml
-```
-
-### 7. Real-time inference on QCar
-
-```bat
-python src\qlab\qcar_inference.py --weights models\runs\best.pt
-```
-
-## Classes
-
-See `docs/class_list.md` for the full class list.
-Default classes match Chinese/common international traffic signs.
-
-## Requirements
-
-- Python 3.10+
 - Windows 10/11
-- QLabs + Quanser QCar libraries (for simulation integration)
-- CUDA-compatible GPU recommended for training
+- Python 3.10 或 3.11（**系统 Python，不使用 venv**）
+- Quanser QLabs 已安装（提供 `qvl`、`pal`、`hal` 库）
+- CUDA GPU（训练推荐，推理可用 CPU）
+
+> ⚠️ Quanser 库为闭源私有库，随 QLabs 软件安装，无法通过 pip 安装。
+> 所有 QLabs 相关脚本须使用系统 Python 运行，不要使用 venv。
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bat
+D:\Python\python.exe -m pip install ultralytics opencv-python keyboard
+```
+
+### 2. 下载 YOLOv11 预训练权重
+
+```bat
+D:\Python\python.exe scripts\download_weights.py --model yolo11n.pt
+```
+
+### 3. 布置 QLabs 场景
+
+打开 QLabs 并加载 Cityscape 场景，然后运行：
+
+```bat
+D:\Python\python.exe src\qlab\setup_scene.py
+```
+
+场景中会自动生成停车标志、让行标志、环岛标志等。运行完后在 QLabs 中 `File → Save Scene` 保存布局。
+
+### 4. 采集数据
+
+**自动驾驶采集（推荐）**：QCar2 沿 QLabs 内置路网自动行驶，图像保存至 `data/raw/`：
+
+```bat
+D:\Python\python.exe src\qlab\collect_auto.py --loops 5 --no-setup
+```
+
+**手动键盘采集**：用键盘控制 QCar2 行驶（需管理员权限运行终端）：
+
+```bat
+D:\Python\python.exe src\qlab\collect_keyboard.py --no-setup
+```
+
+键盘说明：W/S/A/D 控制方向，空格停车，C 手动存图，Q 退出。
+
+### 5. 标注图像
+
+安装并运行 LabelImg：
+
+```bat
+D:\Python\python.exe -m pip install labelImg
+D:\Python\python.exe -m labelImg
+```
+
+- Open Dir → `data\raw\`
+- Change Save Dir → `data\annotated\labels\`
+- 格式选 **YOLO**
+- 快捷键：**W** 画框，**D** 下一张
+
+### 6. 分割数据集
+
+```bat
+D:\Python\python.exe src\data\split_dataset.py
+```
+
+按 7:2:1 自动分割到 `data/splits/`。
+
+### 7. 训练
+
+```bat
+D:\Python\python.exe src\train\train.py
+```
+
+### 8. 推理测试
+
+```bat
+D:\Python\python.exe src\inference\detect_image.py --source data\splits\test\images --show
+```
+
+## 交通标志类别
+
+详见 `docs/class_list.md`，默认包含 10 类：
+
+| ID | 类别 | ID | 类别 |
+|----|------|----|------|
+| 0  | stop（停车）| 5 | speed_limit_80 |
+| 1  | yield（让行）| 6 | no_entry（禁止进入）|
+| 2  | speed_limit_30 | 7 | turn_left |
+| 3  | speed_limit_50 | 8 | turn_right |
+| 4  | speed_limit_60 | 9 | pedestrian_crossing |
+
+## 控制架构说明
+
+数据采集使用 Quanser 官方控制框架：
+
+```
+SDCSRoadMap           → 读取内置路网，生成路径点（不会撞墙）
+QCarDriveController   → 速度 PI + Stanley 转向一体控制
+QCarEKF + QCarGPS     → 实时位置估计
+Camera2D              → CSI 摄像头图像读取
+```

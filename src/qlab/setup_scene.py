@@ -64,11 +64,15 @@ def setup(
         sys.exit(1)
     print("Connected to QLabs")
 
+    # 无论是否 --clear，都先停止旧实时模型，避免"lacks privileges"报错
+    print("停止旧实时模型（如有）...")
+    QLabsRealTime().terminate_all_real_time_models()
+    time.sleep(0.5)
+
     if clear:
         print("清除场景中所有已有 Actor...")
         qlabs.destroy_all_spawned_actors()
-        QLabsRealTime().terminate_all_real_time_models()
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     QLabsSystem(qlabs).set_title_string('Traffic Sign Detection - Data Collection')
 
