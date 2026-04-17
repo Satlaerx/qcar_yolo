@@ -71,12 +71,6 @@ D:\Python\python.exe src\qlab\setup_scene.py
 
 ### 4. 采集数据
 
-**自动驾驶采集（推荐）**：QCar2 沿 QLabs 内置路网自动行驶，图像保存至 `data/raw/`：
-
-```bat
-D:\Python\python.exe src\qlab\collect_auto.py --loops 5 --no-setup
-```
-
 **手动键盘采集**：用键盘控制 QCar2 行驶（需管理员权限运行终端）：
 
 ```bat
