@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (large files — store separately or use DVC)
+data/raw/
+data/annotated/
+data/splits/
+
+# Model weights (large binary files)
+models/pretrained/*.pt
+models/runs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+wandb/
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/annotated/.gitkeep
+!data/splits/train/images/.gitkeep
+!data/splits/train/labels/.gitkeep
+!data/splits/val/images/.gitkeep
+!data/splits/val/labels/.gitkeep
+!data/splits/test/images/.gitkeep
+!data/splits/test/labels/.gitkeep
+!models/pretrained/.gitkeep
+!models/runs/.gitkeep

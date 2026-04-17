@@ -1,0 +1,43 @@
+# configs/train.yaml
+# YOLOv11 fine-tuning configuration
+
+# Model
+model: yolo11n.pt           # nano (fastest). Options: yolo11n/s/m/l/x.pt
+data: configs/dataset.yaml
+
+# Training
+epochs: 100
+patience: 20                # early stopping
+batch: 16                   # reduce to 8 if GPU OOM
+imgsz: 640
+device: 0                   # GPU index; 'cpu' if no GPU
+
+# Optimiser
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3.0
+warmup_momentum: 0.8
+
+# Augmentation
+augment: true
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 10.0
+translate: 0.1
+scale: 0.5
+flipud: 0.0                 # traffic signs are upright — don't flip vertically
+fliplr: 0.0                 # left/right flip changes sign meaning — keep off
+mosaic: 1.0
+mixup: 0.1
+
+# Output
+project: models/runs
+name: traffic_sign_v1
+exist_ok: false
+save: true
+save_period: 10             # checkpoint every N epochs
+plots: true

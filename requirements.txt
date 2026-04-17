@@ -1,0 +1,28 @@
+# Core
+ultralytics>=8.3.0       # YOLOv11 (included in ultralytics >=8.2)
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+
+# Data & utilities
+opencv-python>=4.9.0
+numpy>=1.26.0
+Pillow>=10.2.0
+matplotlib>=3.8.0
+scikit-learn>=1.4.0      # train/val/test split
+PyYAML>=6.0.1
+tqdm>=4.66.0
+pandas>=2.2.0
+
+# Annotation (optional, install separately via GUI)
+# labelImg                # pip install labelImg
+
+# QLabs / Quanser integration
+# Install Quanser Interactive Labs (QLabs) and QCar SDK
+# separately from https://www.quanser.com/products/qlabs/
+# The Python bindings are typically installed with the QLabs package
+# pal-robotics-hardware   # uncomment if using physical QCar
+
+# Dev / notebook
+jupyter>=1.0.0
+ipykernel>=6.29.0
