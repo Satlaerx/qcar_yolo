@@ -1,65 +1,77 @@
 """src/qlab/collect_keyboard.py
-用键盘实时控制 QCar，同时后台自动采集图像。
+键盘控制 QCar2 行驶，同时后台自动采集图像。
+基于官方示例的真实 API：
+  - QCar（pal.products.qcar）控制油门/转向
+  - Camera2D（pal.utilities.vision）读取摄像头
 
-按键说明:
-    W / ↑   前进
-    S / ↓   后退
-    A / ←   左转
-    D / →   右转
-    空格     刹车 / 停车
-    C        手动保存当前帧（不管自动间隔）
-    Q        退出并保存统计
+用法（系统 Python，管理员权限运行终端）:
+    D:\Python\python.exe src\qlab\collect_keyboard.py
+    D:\Python\python.exe src\qlab\collect_keyboard.py --output data\raw --interval 0.15
 
-用法:
-    pip install keyboard         # 需要管理员权限运行
-    python src/qlab/collect_keyboard.py
-    python src/qlab/collect_keyboard.py --output data/raw --interval 0.15 --show
+按键:
+    W / ↑   前进        S / ↓   后退
+    A / ←   左转        D / →   右转
+    空格     停车        C       手动存图
+    Q        退出
 """
 
+import sys
+import signal
 import argparse
 import time
 import threading
 from pathlib import Path
 
-import cv2
 import numpy as np
+import cv2
+
+# Quanser 真实 API
+from pal.products.qcar import QCar, IS_PHYSICAL_QCAR
+from pal.utilities.vision import Camera2D
+
+# 场景初始化（仿真模式下先 setup）
+import src.qlab.setup_scene as qlabs_setup   # 或直接 import setup_scene
+
 
 # ─── 控制参数 ──────────────────────────────────────────────────────────────────
-THROTTLE_FWD  =  0.25   # 前进油门 (0~1)
-THROTTLE_REV  = -0.20   # 后退油门
-STEER_MAX     =  0.35   # 最大转向角 (弧度近似)
-STEER_STEP    =  0.05   # 每帧转向增量（平滑）
+THROTTLE_FWD  =  0.15   # 前进油门（官方示例用 0.3，采集时开慢点）
+THROTTLE_REV  = -0.10
+STEER_MAX     =  0.3    # 最大转向（弧度）
+STEER_STEP    =  0.03   # 每帧转向增量（平滑回正）
+CTRL_HZ       =  50     # 控制循环频率
+
+# 摄像头参数（与官方示例 QCar2_Color_Space.py 一致）
+CAM_ID     = "2@tcpip://localhost:18963"  # QLabs CSI 前置摄像头
+CAM_W      = 820    # 采集时用一半分辨率，加快速度
+CAM_H      = 410
+CAM_FPS    = 30
+
+# 全局停止标志（Ctrl+C 触发）
+KILL = False
+def _sig_handler(*_):
+    global KILL
+    KILL = True
+signal.signal(signal.SIGINT, _sig_handler)
 
 
 class KeyboardCollector:
     def __init__(self, output_dir: Path, interval: float, show: bool):
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.interval   = interval
-        self.show       = show
+        self.interval    = interval
+        self.show        = show
 
-        self.throttle   = 0.0
-        self.steering   = 0.0
-        self.running    = True
-        self.saved      = 0
+        self.throttle    = 0.0
+        self.steering    = 0.0
+        self.saved       = 0
         self.manual_save = False
         self.last_save_t = 0.0
 
-        # 连接 QLabs
-        from qvl.qlabs import QuanserInteractiveLabs
-        from qvl.qcar import QLabsQCar
-        self.qlabs = QuanserInteractiveLabs()
-        self.qlabs.open("localhost")
-        self.qcar  = QLabsQCar(self.qlabs)
-        print("Connected to QLabs QCar.")
-
-    # ── 键盘轮询（不依赖 GUI 焦点） ──────────────────────────────────────────
-    def _read_keys(self):
-        """在独立线程里持续轮询按键状态。"""
-        import keyboard  # pip install keyboard (需管理员)
-        print("\n键盘控制已启动 — W/S/A/D 控制，空格刹车，C 手动存图，Q 退出\n")
-
-        while self.running:
+    # ── 键盘轮询线程 ──────────────────────────────────────────────────────────
+    def _key_loop(self):
+        import keyboard
+        print("\n键盘已就绪 — W/S/A/D 控制，空格停车，C 手动存图，Q 退出\n")
+        while not KILL:
             # 纵向
             if keyboard.is_pressed("w") or keyboard.is_pressed("up"):
                 self.throttle = THROTTLE_FWD
@@ -68,131 +80,125 @@ class KeyboardCollector:
             else:
                 self.throttle = 0.0
 
-            # 横向（平滑）
+            # 横向平滑
             if keyboard.is_pressed("a") or keyboard.is_pressed("left"):
                 self.steering = min(self.steering + STEER_STEP, STEER_MAX)
             elif keyboard.is_pressed("d") or keyboard.is_pressed("right"):
                 self.steering = max(self.steering - STEER_STEP, -STEER_MAX)
             else:
-                # 回正
                 if abs(self.steering) < STEER_STEP:
                     self.steering = 0.0
                 else:
-                    self.steering -= STEER_STEP * (1 if self.steering > 0 else -1)
+                    self.steering -= STEER_STEP * np.sign(self.steering)
 
-            # 刹车
             if keyboard.is_pressed("space"):
                 self.throttle = 0.0
                 self.steering = 0.0
 
-            # 手动存图
             if keyboard.is_pressed("c"):
                 self.manual_save = True
 
-            # 退出
             if keyboard.is_pressed("q"):
-                self.running = False
+                global KILL
+                KILL = True
 
-            time.sleep(0.03)   # ~33 Hz 轮询
+            time.sleep(1 / CTRL_HZ)
+
+    # ── HUD 叠加 ──────────────────────────────────────────────────────────────
+    def _draw_hud(self, frame):
+        cv2.putText(frame, f"Throttle: {self.throttle:+.2f}",
+                    (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+        cv2.putText(frame, f"Steering: {self.steering:+.2f}",
+                    (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+        cv2.putText(frame, f"Saved: {self.saved}",
+                    (10, 84), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,200,255), 2)
 
     # ── 主循环 ────────────────────────────────────────────────────────────────
     def run(self):
-        key_thread = threading.Thread(target=self._read_keys, daemon=True)
-        key_thread.start()
+        # 启动键盘线程
+        threading.Thread(target=self._key_loop, daemon=True).start()
 
-        print(f"自动存图间隔: {self.interval}s  →  输出目录: {self.output_dir}")
+        # 初始化摄像头（Camera2D，与官方示例相同）
+        print(f"初始化摄像头 {CAM_ID} ...")
+        cam = Camera2D(
+            cameraId=CAM_ID,
+            frameWidth=CAM_W,
+            frameHeight=CAM_H,
+            frameRate=CAM_FPS,
+        )
 
-        try:
-            while self.running:
+        # 初始化 QCar 控制接口
+        print("初始化 QCar 控制接口...")
+        qcar = QCar(readMode=1, frequency=CTRL_HZ)
+
+        print(f"开始采集 → {self.output_dir}  (间隔 {self.interval}s)\n")
+
+        with qcar:
+            while not KILL:
                 t_now = time.time()
 
-                # 发送控制指令
-                self.qcar.set_velocity_and_request_state(
-                    speed=self.throttle,
-                    steering=self.steering,
-                    headlights=True,
-                    leftTurnSignal=(self.steering > 0.1),
-                    rightTurnSignal=(self.steering < -0.1),
-                    brakeSignal=(self.throttle == 0.0),
-                    reverseSignal=(self.throttle < 0),
-                )
+                # 写入控制指令
+                qcar.write(self.throttle, self.steering)
 
                 # 读取摄像头
-                ok, frame = self.qcar.get_image(0)  # 0 = 前置摄像头
-                if not ok:
-                    time.sleep(0.05)
-                    continue
+                cam.read()
+                frame = cam.imageData   # numpy BGR
 
                 # 判断是否保存
-                should_save = (
-                    self.manual_save or
-                    (t_now - self.last_save_t) >= self.interval
-                )
-                if should_save:
+                if self.manual_save or (t_now - self.last_save_t) >= self.interval:
                     fname = self.output_dir / f"frame_{self.saved:05d}.jpg"
                     cv2.imwrite(str(fname), frame)
                     self.saved += 1
                     self.last_save_t = t_now
                     self.manual_save = False
 
-                # 实时预览（叠加 HUD）
+                # 预览
                 if self.show:
                     display = frame.copy()
                     self._draw_hud(display)
-                    cv2.imshow("QCar — 按 Q 退出", display)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        self.running = False
+                    cv2.imshow("QCar Data Collection  (Q=退出)", display)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        global KILL
+                        KILL = True
 
-                time.sleep(0.02)   # ~50 Hz 主循环
+                time.sleep(1 / CTRL_HZ)
 
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self._cleanup()
+            # 停车
+            qcar.write(0.0, 0.0)
 
-    def _draw_hud(self, frame: np.ndarray):
-        """在预览窗口叠加速度/转向/帧数信息。"""
-        h, w = frame.shape[:2]
-        cv2.putText(frame, f"Throttle: {self.throttle:+.2f}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        cv2.putText(frame, f"Steering: {self.steering:+.2f}", (10, 55),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        cv2.putText(frame, f"Saved:    {self.saved}", (10, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
-
-        # 简单方向盘示意
-        cx, cy, r = w - 60, 60, 40
-        cv2.circle(frame, (cx, cy), r, (200, 200, 200), 2)
-        sx = int(cx + r * 0.8 * (-self.steering / STEER_MAX))
-        cv2.line(frame, (cx, cy), (sx, cy + 20), (0, 255, 255), 3)
-
-    def _cleanup(self):
-        self.qcar.set_velocity_and_request_state(
-            speed=0, steering=0,
-            headlights=False, leftTurnSignal=False,
-            rightTurnSignal=False, brakeSignal=True, reverseSignal=False,
-        )
-        self.qlabs.close()
+        cam.close()
         cv2.destroyAllWindows()
-        print(f"\n采集完成。共保存 {self.saved} 张图像 → {self.output_dir}")
+        print(f"\n✓ 采集完成。共保存 {self.saved} 张图像 → {self.output_dir}")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output",   default="data/raw",
-                        help="图像保存目录")
+                        help="图像保存目录（默认 data/raw）")
     parser.add_argument("--interval", type=float, default=0.15,
-                        help="自动存图间隔（秒），默认 0.15s ≈ 6~7fps")
-    parser.add_argument("--show",     action="store_true", default=True,
-                        help="显示实时预览窗口")
+                        help="自动存图间隔秒数（默认 0.15 ≈ 6fps）")
+    parser.add_argument("--no-show",  action="store_true",
+                        help="不显示预览窗口（无 GUI 环境）")
+    parser.add_argument("--no-setup", action="store_true",
+                        help="跳过 QLabs 场景初始化（场景已就绪时使用）")
     args = parser.parse_args()
+
+    # 仿真模式下先布置场景
+    if not IS_PHYSICAL_QCAR and not args.no_setup:
+        print("=== 初始化 QLabs 场景 ===")
+        qlabs_setup.setup()
+        print()
 
     collector = KeyboardCollector(
         output_dir=Path(args.output),
         interval=args.interval,
-        show=args.show,
+        show=not args.no_show,
     )
     collector.run()
+
+    # 退出时清理场景
+    if not IS_PHYSICAL_QCAR and not args.no_setup:
+        qlabs_setup.terminate()
 
 
 if __name__ == "__main__":

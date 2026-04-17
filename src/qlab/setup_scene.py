@@ -1,93 +1,145 @@
 """src/qlab/setup_scene.py
-在 QLabs 场景里批量放置交通标志。
-运行一次即可，保存 QLabs 场景后标志永久存在。
+在 QLabs 场景里初始化 QCar2 并布置交通标志。
+基于 Quanser 官方示例代码（qlabs_setup.py）的实际 API 编写。
 
-用法:
-    python src/qlab/setup_scene.py
-    python src/qlab/setup_scene.py --clear   # 先清除已有标志再重新放
+用法（系统 Python，不要用 venv）:
+    D:\Python\python.exe src\qlab\setup_scene.py
+    D:\Python\python.exe src\qlab\setup_scene.py --clear
 """
 
+import os
+import sys
 import argparse
+import numpy as np
+import time
+
 from qvl.qlabs import QuanserInteractiveLabs
-from qvl.traffic_sign import QLabsTrafficSign
+from qvl.qcar2 import QLabsQCar2
+from qvl.free_camera import QLabsFreeCamera
+from qvl.real_time import QLabsRealTime
+from qvl.system import QLabsSystem
 
-# ─── 交通标志布局配置 ──────────────────────────────────────────────────────────
-# 每条记录: (x, y, z, yaw度, sign_type, 备注)
-# sign_type 参考 QLabsTrafficSign 的常量，例如:
-#   SIGN_STOP / SIGN_YIELD / SIGN_NO_ENTRY / SIGN_SPEED_LIMIT_* 等
-# 如果你的 SDK 版本常量名不同，改成对应整数 ID 即可
+# 每种标志是独立的类，不存在通用 QLabsTrafficSign
+from qvl.stop_sign import QLabsStopSign
+from qvl.yield_sign import QLabsYieldSign
+from qvl.roundabout_sign import QLabsRoundaboutSign
+from qvl.traffic_light import QLabsTrafficLight
 
-SIGN_LAYOUT = [
-    # ── 直道段：QCar 正前方，不同距离 ──────────────────────────────
-    ( 3.0,  0.0, 0.0,   0, "SIGN_STOP",          "近距离正对"),
-    ( 6.0,  0.0, 0.0,   0, "SIGN_SPEED_LIMIT_30","中距离正对"),
-    (10.0,  0.0, 0.0,   0, "SIGN_YIELD",         "远距离正对"),
+import pal.resources.rtmodels as rtmodels
 
-    # ── 路侧：右侧偏角 ──────────────────────────────────────────────
-    ( 4.0, -1.2, 0.0, -20, "SIGN_NO_ENTRY",      "右侧-20度"),
-    ( 7.0, -1.5, 0.0, -35, "SIGN_SPEED_LIMIT_50","右侧-35度"),
 
-    # ── 路侧：左侧偏角 ──────────────────────────────────────────────
-    ( 5.0,  1.2, 0.0,  20, "SIGN_TURN_RIGHT",    "左侧+20度"),
-    ( 8.0,  1.5, 0.0,  35, "SIGN_PEDESTRIAN",    "左侧+35度"),
+# ─── 交通标志布局配置（Cityscape 场景坐标）────────────────────────────────────
+# 格式: (location[x,y,z], rotation[roll,pitch,yaw_rad], 备注)
 
-    # ── 弯道处 ─────────────────────────────────────────────────────
-    (12.0,  2.0, 0.0,  45, "SIGN_TURN_LEFT",     "弯道前"),
-    (15.0, -1.0, 0.0, -30, "SIGN_SPEED_LIMIT_80","弯道后"),
+STOP_SIGNS = [
+    ([-0.508, -7.327, 0.2], [0, 0, np.pi/2],  "路口停车线"),
+    ([ 5.0,    3.0,   0.2], [0, 0, np.pi],    "直道右侧"),
+    ([ 8.0,   -2.0,  0.2],  [0, 0, np.pi/4],  "弯道前"),
 ]
 
-# sign_type 字符串 → QLabsTrafficSign 常量映射
-# 根据你的 SDK 版本调整，不确定时直接用整数 ID
-SIGN_TYPE_MAP = {
-    "SIGN_STOP":           QLabsTrafficSign.SIGN_STOP           if hasattr(QLabsTrafficSign, "SIGN_STOP")           else 0,
-    "SIGN_YIELD":          QLabsTrafficSign.SIGN_YIELD          if hasattr(QLabsTrafficSign, "SIGN_YIELD")          else 1,
-    "SIGN_SPEED_LIMIT_30": QLabsTrafficSign.SIGN_SPEED_LIMIT_30 if hasattr(QLabsTrafficSign, "SIGN_SPEED_LIMIT_30") else 2,
-    "SIGN_SPEED_LIMIT_50": QLabsTrafficSign.SIGN_SPEED_LIMIT_50 if hasattr(QLabsTrafficSign, "SIGN_SPEED_LIMIT_50") else 3,
-    "SIGN_SPEED_LIMIT_80": QLabsTrafficSign.SIGN_SPEED_LIMIT_80 if hasattr(QLabsTrafficSign, "SIGN_SPEED_LIMIT_80") else 4,
-    "SIGN_NO_ENTRY":       QLabsTrafficSign.SIGN_NO_ENTRY       if hasattr(QLabsTrafficSign, "SIGN_NO_ENTRY")       else 5,
-    "SIGN_TURN_LEFT":      QLabsTrafficSign.SIGN_TURN_LEFT      if hasattr(QLabsTrafficSign, "SIGN_TURN_LEFT")      else 6,
-    "SIGN_TURN_RIGHT":     QLabsTrafficSign.SIGN_TURN_RIGHT     if hasattr(QLabsTrafficSign, "SIGN_TURN_RIGHT")     else 7,
-    "SIGN_PEDESTRIAN":     QLabsTrafficSign.SIGN_PEDESTRIAN     if hasattr(QLabsTrafficSign, "SIGN_PEDESTRIAN")     else 8,
-}
+YIELD_SIGNS = [
+    ([0.4,  -13.0, 0.0], [0, 0, np.pi],   "路口让行"),
+    ([6.0,    5.0, 0.0], [0, 0, np.pi/2], "交叉路口"),
+]
+
+ROUNDABOUT_SIGNS = [
+    ([24.5, 33.0, 0.0], [0, 0, -np.pi/2], "环岛入口1"),
+    ([ 4.5, 40.0, 0.0], [0, 0,  np.pi],   "环岛入口2"),
+    ([10.6, 28.5, 0.0], [0, 0,  np.pi],   "环岛入口3"),
+]
 
 
-def setup_scene(clear: bool = False):
-    import math
-
+def setup(
+    initial_position=[1.36, 1.311, 0.0],
+    initial_orientation=[0, 0, -np.pi/2],
+    rt_model=rtmodels.QCAR2,
+    clear=False,
+):
+    os.system('cls')
     qlabs = QuanserInteractiveLabs()
-    print("Connecting to QLabs...")
-    qlabs.open("localhost")
 
-    sign_actor = QLabsTrafficSign(qlabs)
+    print("Connecting to QLabs...")
+    if not qlabs.open("localhost"):
+        print("无法连接到 QLabs，请确认 QLabs 已启动并加载了场景")
+        sys.exit(1)
+    print("Connected to QLabs")
 
     if clear:
-        print("Clearing existing traffic signs...")
-        sign_actor.destroy_all_instances()
+        print("清除场景中所有已有 Actor...")
+        qlabs.destroy_all_spawned_actors()
+        QLabsRealTime().terminate_all_real_time_models()
+        time.sleep(0.5)
 
-    print(f"Spawning {len(SIGN_LAYOUT)} traffic signs...")
-    for i, (x, y, z, yaw_deg, sign_type_str, note) in enumerate(SIGN_LAYOUT):
-        yaw_rad = math.radians(yaw_deg)
-        sign_type_id = SIGN_TYPE_MAP.get(sign_type_str, 0)
+    QLabsSystem(qlabs).set_title_string('Traffic Sign Detection - Data Collection')
 
-        ret = sign_actor.spawn_id(
-            actorNumber=i,
-            location=[x, y, z],
-            rotation=[0, 0, yaw_rad],
-            scale=[1, 1, 1],
-            configuration=sign_type_id,
-            waitForConfirmation=True,
-        )
+    # 生成 QCar2
+    print(f"生成 QCar2 @ {initial_position} ...")
+    hqcar = QLabsQCar2(qlabs)
+    hqcar.spawn_id(
+        actorNumber=0,
+        location=initial_position,
+        rotation=initial_orientation,
+        waitForConfirmation=True,
+    )
 
-        status = "OK" if ret == 0 else f"WARN(ret={ret})"
-        print(f"  [{status}] #{i:02d} {sign_type_str:25s} @ ({x:5.1f},{y:5.1f}) yaw={yaw_deg:+d}°  {note}")
+    hcamera = QLabsFreeCamera(qlabs)
+    hcamera.spawn([8.484, 1.973, 12.209], [0, 0.748, 0.792])
+    hqcar.possess()
 
-    print("\n场景布置完成。请在 QLabs 里 File → Save Scene 保存。")
+    # 生成各类交通标志
+    print("\n生成停车标志...")
+    for i, (loc, rot, note) in enumerate(STOP_SIGNS):
+        sign = QLabsStopSign(qlabs)
+        ret = sign.spawn(location=loc, rotation=rot,
+                         scale=[1,1,1], configuration=0,
+                         waitForConfirmation=True)
+        print(f"  [{'OK' if ret==0 else f'WARN ret={ret}'}] StopSign #{i}  {note}")
+
+    print("生成让行标志...")
+    for i, (loc, rot, note) in enumerate(YIELD_SIGNS):
+        sign = QLabsYieldSign(qlabs)
+        ret = sign.spawn(location=loc, rotation=rot, waitForConfirmation=True)
+        print(f"  [{'OK' if ret==0 else f'WARN ret={ret}'}] YieldSign #{i}  {note}")
+
+    print("生成环岛标志...")
+    for i, (loc, rot, note) in enumerate(ROUNDABOUT_SIGNS):
+        sign = QLabsRoundaboutSign(qlabs)
+        ret = sign.spawn(location=loc, rotation=rot, waitForConfirmation=True)
+        print(f"  [{'OK' if ret==0 else f'WARN ret={ret}'}] RoundaboutSign #{i}  {note}")
+
+    # 启动实时模型（必须，否则 QCar 物理不生效）
+    print(f"\n启动实时模型...")
+    QLabsRealTime().start_real_time_model(rt_model)
+
+    print("\n✓ 场景布置完成！")
+    print("  提示: 在 QLabs 中 File → Save Scene 可保存布局")
     qlabs.close()
+    return hqcar
 
 
-if __name__ == "__main__":
+def terminate():
+    """实验结束时清理场景，可在其他脚本里调用。"""
+    qlabs = QuanserInteractiveLabs()
+    if qlabs.open("localhost"):
+        qlabs.destroy_all_spawned_actors()
+        QLabsRealTime().terminate_all_real_time_models()
+        qlabs.close()
+
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--clear", action="store_true",
-                        help="先清除场景中所有已有交通标志")
+                        help="先清除场景中所有已有 Actor 再重新生成")
+    parser.add_argument("--x",   type=float, default=1.36,
+                        help="QCar 初始 X 坐标（默认 Cityscape 起点）")
+    parser.add_argument("--y",   type=float, default=1.311,
+                        help="QCar 初始 Y 坐标")
+    parser.add_argument("--yaw", type=float, default=-90,
+                        help="QCar 初始朝向（度，默认 -90）")
     args = parser.parse_args()
-    setup_scene(clear=args.clear)
+
+    setup(
+        initial_position=[args.x, args.y, 0.0],
+        initial_orientation=[0, 0, np.radians(args.yaw)],
+        clear=args.clear,
+    )
