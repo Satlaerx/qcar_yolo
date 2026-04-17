@@ -12,6 +12,7 @@ matplotlib>=3.8.0
 scikit-learn>=1.4.0      # train/val/test split
 PyYAML>=6.0.1
 tqdm>=4.66.0
+keyboard>=0.13.5          # 键盘控制 QCar（Windows 需管理员权限运行）
 pandas>=2.2.0
 
 # Annotation (optional, install separately via GUI)
