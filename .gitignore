@@ -14,18 +14,11 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data (large files — store separately or use DVC)
-data/raw/
-data/annotated/
-data/splits/
-
-# Model weights (large binary files)
-models/pretrained/*.pt
-models/runs/
-
+data/
+models/
 code/
 
-.bat
+*.bat
 
 # OS
 .DS_Store
