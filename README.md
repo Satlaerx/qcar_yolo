@@ -30,8 +30,6 @@ traffic_sign_yolo/
 ├── scripts/
 │   ├── setup_env.bat               # Windows 一键环境配置
 │   └── download_weights.py         # 下载 YOLOv11 预训练权重
-├── docs/
-│   └── class_list.md               # 交通标志类别定义
 └── requirements.txt
 ```
 
@@ -110,20 +108,18 @@ D:\Python\python.exe src\train\train.py
 ### 8. 推理测试
 
 ```bat
-D:\Python\python.exe src\inference\detect_image.py --source data\splits\test\images --show
+D:\Python\python.exe src\qlab\qcar_inference.py --weights "E:\qcar_yolo\traffic_sign_yolo\models\runs\traffic_sign_v1\weights\best.pt"
 ```
 
 ## 交通标志类别
 
 详见 `docs/class_list.md`，默认包含 10 类：
 
-| ID | 类别 | ID | 类别 |
-|----|------|----|------|
-| 0  | stop（停车）| 5 | speed_limit_80 |
-| 1  | yield（让行）| 6 | no_entry（禁止进入）|
-| 2  | speed_limit_30 | 7 | turn_left |
-| 3  | speed_limit_50 | 8 | turn_right |
-| 4  | speed_limit_60 | 9 | pedestrian_crossing |
+| ID | 类别 | 
+|----|------| 
+| 0  | stop（停车）| 
+| 1  | yield（让行）|  
+| 2  | roundabout（环岛）| 
 
 ## 控制架构说明
 

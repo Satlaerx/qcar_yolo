@@ -1,0 +1,15 @@
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.87
+  检测到: StopSign  置信度: 0.86
+  检测到: StopSign  置信度: 0.87

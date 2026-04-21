@@ -23,6 +23,8 @@ data/splits/
 models/pretrained/*.pt
 models/runs/
 
+code/
+
 .bat
 
 # OS

@@ -23,10 +23,10 @@ warmup_momentum: 0.8
 
 # Augmentation
 augment: true
-hsv_h: 0.015
-hsv_s: 0.7
-hsv_v: 0.4
-degrees: 10.0
+hsv_h: 0.02     # 色调抖动
+hsv_s: 0.9      # 饱和度抖动（模拟阴天）
+hsv_v: 0.5      # 亮度抖动（模拟光照变化）
+degrees: 15.0   # 旋转角度
 translate: 0.1
 scale: 0.5
 flipud: 0.0                 # traffic signs are upright — don't flip vertically
